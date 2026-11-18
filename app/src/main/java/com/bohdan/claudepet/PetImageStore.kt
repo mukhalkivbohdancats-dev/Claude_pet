@@ -96,12 +96,7 @@ object PetImageStore {
             val factor = min(1f, maxSide.toFloat() / max(original.width, original.height))
             val scaledWidth = max(1, (original.width * factor).toInt())
             val scaledHeight = max(1, (original.height * factor).toInt())
-            val smallSmooth = Bitmap.createScaledBitmap(
-                original,
-                scaledWidth,
-                scaledHeight,
-                true
-            )
+            val smallSmooth = Bitmap.createScaledBitmap(original, scaledWidth, scaledHeight, true)
             if (smallSmooth !== original) original.recycle()
 
             val working = smallSmooth.copy(Bitmap.Config.ARGB_8888, true)
@@ -112,18 +107,10 @@ object PetImageStore {
             if (cropped !== working) working.recycle()
 
             val pixelSide = 48
-            val pixelFactor = min(
-                1f,
-                pixelSide.toFloat() / max(cropped.width, cropped.height)
-            )
+            val pixelFactor = min(1f, pixelSide.toFloat() / max(cropped.width, cropped.height))
             val pixelWidth = max(1, (cropped.width * pixelFactor).toInt())
             val pixelHeight = max(1, (cropped.height * pixelFactor).toInt())
-            val pixel = Bitmap.createScaledBitmap(
-                cropped,
-                pixelWidth,
-                pixelHeight,
-                false
-            )
+            val pixel = Bitmap.createScaledBitmap(cropped, pixelWidth, pixelHeight, false)
             if (cropped !== pixel) cropped.recycle()
             pixel
         } catch (_: Exception) {
@@ -142,9 +129,8 @@ object PetImageStore {
                     BitmapFactory.decodeStream(it, null, bounds)
                 }
                 if (bounds.outWidth > 0 && bounds.outHeight > 0) {
-                    val sample = sampleSize(bounds.outWidth, bounds.outHeight)
                     val options = BitmapFactory.Options().apply {
-                        inSampleSize = sample
+                        inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight)
                         inPreferredConfig = Bitmap.Config.ARGB_8888
                     }
                     context.contentResolver.openInputStream(uri)?.use {
@@ -174,9 +160,9 @@ object PetImageStore {
         return sample
     }
 
+    // Flood-fill only the outside-connected background, then remove its pale fringe.
     private fun removeFlatEdgeBackground(bitmap: Bitmap) {
         if (bitmap.width < 4 || bitmap.height < 4) return
-
         val width = bitmap.width
         val height = bitmap.height
         val corners = intArrayOf(
@@ -185,16 +171,14 @@ object PetImageStore {
             bitmap.getPixel(0, height - 1),
             bitmap.getPixel(width - 1, height - 1)
         )
-        // PNGs with an existing transparent edge should keep their alpha untouched.
         if (corners.any { Color.alpha(it) < 245 }) return
 
-        val averageRed = corners.map { Color.red(it) }.average().toInt()
-        val averageGreen = corners.map { Color.green(it) }.average().toInt()
-        val averageBlue = corners.map { Color.blue(it) }.average().toInt()
-        val background = Color.rgb(averageRed, averageGreen, averageBlue)
-
-        val cornersSimilar = corners.all { colorDistance(it, background) < 48 }
-        if (!cornersSimilar) return
+        val background = Color.rgb(
+            corners.map { Color.red(it) }.average().toInt(),
+            corners.map { Color.green(it) }.average().toInt(),
+            corners.map { Color.blue(it) }.average().toInt()
+        )
+        if (!corners.all { colorDistance(it, background) < 55 }) return
 
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
@@ -203,21 +187,21 @@ object PetImageStore {
         var head = 0
         var tail = 0
 
-        fun addIfBackground(index: Int) {
-            if (index < 0 || index >= pixels.size || visited[index]) return
-            if (Color.alpha(pixels[index]) > 0 && colorDistance(pixels[index], background) <= 62) {
+        fun add(index: Int) {
+            if (index !in pixels.indices || visited[index]) return
+            if (Color.alpha(pixels[index]) > 0 && colorDistance(pixels[index], background) <= 88) {
                 visited[index] = true
                 queue[tail++] = index
             }
         }
 
         for (x in 0 until width) {
-            addIfBackground(x)
-            addIfBackground((height - 1) * width + x)
+            add(x)
+            add((height - 1) * width + x)
         }
         for (y in 0 until height) {
-            addIfBackground(y * width)
-            addIfBackground(y * width + width - 1)
+            add(y * width)
+            add(y * width + width - 1)
         }
 
         while (head < tail) {
@@ -225,19 +209,44 @@ object PetImageStore {
             pixels[index] = Color.TRANSPARENT
             val x = index % width
             val y = index / width
-            if (x > 0) addIfBackground(index - 1)
-            if (x < width - 1) addIfBackground(index + 1)
-            if (y > 0) addIfBackground(index - width)
-            if (y < height - 1) addIfBackground(index + width)
+            if (x > 0) add(index - 1)
+            if (x < width - 1) add(index + 1)
+            if (y > 0) add(index - width)
+            if (y < height - 1) add(index + width)
+        }
+
+        // Remove one connected halo pixel around the transparent background.
+        val halo = IntArray(pixels.size)
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val index = y * width + x
+                if (Color.alpha(pixels[index]) == 0) continue
+                var touchesBackground = false
+                for (dy in -1..1) {
+                    for (dx in -1..1) {
+                        if (dx == 0 && dy == 0) continue
+                        val nx = x + dx
+                        val ny = y + dy
+                        if (nx in 0 until width && ny in 0 until height &&
+                            Color.alpha(pixels[ny * width + nx]) == 0
+                        ) touchesBackground = true
+                    }
+                }
+                if (touchesBackground && colorDistance(pixels[index], background) <= 112) {
+                    halo[index] = 1
+                }
+            }
+        }
+        for (i in halo.indices) {
+            if (halo[i] == 1) pixels[i] = Color.TRANSPARENT
         }
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
     }
 
-    private fun colorDistance(first: Int, second: Int): Int {
-        return abs(Color.red(first) - Color.red(second)) +
+    private fun colorDistance(first: Int, second: Int): Int =
+        abs(Color.red(first) - Color.red(second)) +
             abs(Color.green(first) - Color.green(second)) +
             abs(Color.blue(first) - Color.blue(second))
-    }
 
     private fun cropTransparentMargin(source: Bitmap): Bitmap {
         val width = source.width
@@ -266,16 +275,8 @@ object PetImageStore {
         minY = max(0, minY - padding)
         maxX = min(width - 1, maxX + padding)
         maxY = min(height - 1, maxY + padding)
+        if (minX == 0 && minY == 0 && maxX == width - 1 && maxY == height - 1) return source
 
-        if (minX == 0 && minY == 0 && maxX == width - 1 && maxY == height - 1) {
-            return source
-        }
-        return Bitmap.createBitmap(
-            source,
-            minX,
-            minY,
-            maxX - minX + 1,
-            maxY - minY + 1
-        )
+        return Bitmap.createBitmap(source, minX, minY, maxX - minX + 1, maxY - minY + 1)
     }
 }
