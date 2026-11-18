@@ -24,10 +24,13 @@ jobs:
       - name: Install Android SDK packages
         shell: bash
         run: |
-          SDK_ROOT="\${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDK_ROOT="$ANDROID_HOME"
+          if [ -z "$SDK_ROOT" ]; then
+            SDK_ROOT="/usr/local/lib/android/sdk"
+          fi
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
           if [ -z "$SDKMANAGER" ]; then
-            echo "Android SDK command-line tools were not found."
+            echo "Android SDK command-line tools were not found in $SDK_ROOT."
             exit 1
           fi
           yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses
