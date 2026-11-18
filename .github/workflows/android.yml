@@ -33,7 +33,7 @@ jobs:
             echo "Android SDK command-line tools were not found in $SDK_ROOT."
             exit 1
           fi
-          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses || true
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Gradle
