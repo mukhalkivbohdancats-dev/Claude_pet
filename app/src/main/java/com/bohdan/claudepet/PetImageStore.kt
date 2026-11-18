@@ -103,6 +103,7 @@ object PetImageStore {
             if (smallSmooth !== working) smallSmooth.recycle()
 
             removeFlatEdgeBackground(working)
+            removeLightFringe(working)
             val cropped = cropTransparentMargin(working)
             if (cropped !== working) working.recycle()
 
@@ -239,6 +240,49 @@ object PetImageStore {
         }
         for (i in halo.indices) {
             if (halo[i] == 1) pixels[i] = Color.TRANSPARENT
+        }
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+    }
+
+    // Remove pale/white edge pixels touching transparency (common JPEG halo near feet).
+    private fun removeLightFringe(bitmap: Bitmap) {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width < 3 || height < 3) return
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        repeat(2) {
+            val remove = BooleanArray(pixels.size)
+            for (y in 1 until height - 1) {
+                for (x in 1 until width - 1) {
+                    val index = y * width + x
+                    val color = pixels[index]
+                    if (Color.alpha(color) == 0) continue
+                    val red = Color.red(color)
+                    val green = Color.green(color)
+                    val blue = Color.blue(color)
+                    val nearWhite = min(red, min(green, blue)) >= 214 &&
+                        max(red, max(green, blue)) - min(red, min(green, blue)) <= 42
+                    if (!nearWhite) continue
+
+                    var touchesTransparent = false
+                    for (dy in -1..1) {
+                        for (dx in -1..1) {
+                            if (dx == 0 && dy == 0) continue
+                            if (Color.alpha(pixels[(y + dy) * width + x + dx]) == 0) {
+                                touchesTransparent = true
+                                break
+                            }
+                        }
+                        if (touchesTransparent) break
+                    }
+                    if (touchesTransparent) remove[index] = true
+                }
+            }
+            for (i in remove.indices) {
+                if (remove[i]) pixels[i] = Color.TRANSPARENT
+            }
         }
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
     }
