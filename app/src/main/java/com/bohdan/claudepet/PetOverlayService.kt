@@ -252,7 +252,7 @@ class PetOverlayService : Service() {
                 }
             } else {
                 params.y = bottom
-                val step = max(1, dp(1.45f))
+                val step = max(1, dp(1.45f).roundToInt())
                 params.x += (direction * step).roundToInt()
                 val rightEdge = max(0, screenWidth() - params.width)
                 if (params.x <= 0) {
