@@ -192,6 +192,8 @@ class PetOverlayService : Service() {
         private var touchStartY = 0f
         private var windowStartX = 0
         private var windowStartY = 0
+        // 0 bottom (right), 1 right side (up), 2 top (left), 3 left side (down).
+        private var edge = 0
 
         fun handleTouch(event: MotionEvent): Boolean {
             when (event.actionMasked) {
@@ -215,7 +217,7 @@ class PetOverlayService : Service() {
                     params.y = (windowStartY + dy.roundToInt())
                         .coerceIn(0, floorY(params.height))
                     if (abs(dx) > dp(2)) direction = if (dx >= 0) 1f else -1f
-                    view.setMotion(phase, direction, false)
+                    view.setMotion(phase, direction, false, 0f)
                     updateView()
                     return true
                 }
@@ -251,22 +253,62 @@ class PetOverlayService : Service() {
                     velocityY = 0f
                 }
             } else {
-                params.y = bottom
-                val step = max(1, dp(1.45f).roundToInt())
-                params.x += (direction * step).roundToInt()
-                val rightEdge = max(0, screenWidth() - params.width)
-                if (params.x <= 0) {
-                    params.x = 0
-                    direction = 1f
-                } else if (params.x >= rightEdge) {
-                    params.x = rightEdge
-                    direction = -1f
-                }
+                moveAroundScreen(bottom)
             }
 
             phase += if (falling) 0.12f else 0.24f
-            view.setMotion(phase, direction, falling)
+            val rotation = when (edge) {
+                1 -> 90f
+                3 -> -90f
+                else -> 0f
+            }
+            view.setMotion(phase, direction, falling, rotation)
             updateView()
+        }
+
+        private fun moveAroundScreen(bottom: Int) {
+            val right = max(0, screenWidth() - params.width)
+            val top = dp(24).coerceAtMost(bottom)
+            val step = max(1, dp(1.45f).roundToInt())
+
+            when (edge) {
+                0 -> {
+                    direction = 1f
+                    params.y = bottom
+                    params.x += step
+                    if (params.x >= right) {
+                        params.x = right
+                        edge = 1
+                    }
+                }
+                1 -> {
+                    direction = 1f
+                    params.x = right
+                    params.y -= step
+                    if (params.y <= top) {
+                        params.y = top
+                        edge = 2
+                    }
+                }
+                2 -> {
+                    direction = -1f
+                    params.y = top
+                    params.x -= step
+                    if (params.x <= 0) {
+                        params.x = 0
+                        edge = 3
+                    }
+                }
+                else -> {
+                    direction = -1f
+                    params.x = 0
+                    params.y += step
+                    if (params.y >= bottom) {
+                        params.y = bottom
+                        edge = 0
+                    }
+                }
+            }
         }
 
         private fun updateView() {
