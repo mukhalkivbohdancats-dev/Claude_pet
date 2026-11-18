@@ -17,6 +17,7 @@ class PixelPetView(context: Context) : View(context) {
     private var phase = 0f
     private var direction = 1f
     private var falling = false
+    private var orientation = 0f
 
     private val imagePaint = Paint().apply {
         isAntiAlias = false
@@ -34,10 +35,16 @@ class PixelPetView(context: Context) : View(context) {
         invalidate()
     }
 
-    fun setMotion(newPhase: Float, newDirection: Float, isFalling: Boolean) {
+    fun setMotion(
+        newPhase: Float,
+        newDirection: Float,
+        isFalling: Boolean,
+        newOrientation: Float = 0f
+    ) {
         phase = newPhase
         direction = newDirection
         falling = isFalling
+        orientation = newOrientation
         invalidate()
     }
 
@@ -58,17 +65,20 @@ class PixelPetView(context: Context) : View(context) {
         val left = centerX - drawWidth / 2f
         val top = centerY - drawHeight / 2f + bob
 
-        canvas.drawOval(
-            RectF(
-                centerX - dp(19f),
-                height - dp(10f),
-                centerX + dp(19f),
-                height - dp(5f)
-            ),
-            shadowPaint
-        )
+        if (orientation == 0f) {
+            canvas.drawOval(
+                RectF(
+                    centerX - dp(19f),
+                    height - dp(10f),
+                    centerX + dp(19f),
+                    height - dp(5f)
+                ),
+                shadowPaint
+            )
+        }
 
         canvas.save()
+        canvas.rotate(orientation, centerX, centerY)
         canvas.scale(direction, 1f, centerX, centerY)
         if (!falling) {
             canvas.rotate(sin(phase).toFloat() * 2.0f, centerX, centerY)
