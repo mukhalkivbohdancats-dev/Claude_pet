@@ -194,6 +194,9 @@ class PetOverlayService : Service() {
         private var windowStartY = 0
         // 0 bottom (right), 1 right side (up), 2 top (left), 3 left side (down).
         private var edge = 0
+        // Keep an unwrapped angle so every corner turn animates continuously.
+        private var targetOrientation = 0f
+        private var animatedOrientation = 0f
 
         fun handleTouch(event: MotionEvent): Boolean {
             when (event.actionMasked) {
@@ -201,6 +204,9 @@ class PetOverlayService : Service() {
                     dragging = true
                     falling = false
                     velocityY = 0f
+                    targetOrientation = 0f
+                    animatedOrientation = 0f
+                    edge = 0
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     windowStartX = params.x
@@ -232,6 +238,9 @@ class PetOverlayService : Service() {
                     } else {
                         params.y = bottom
                         falling = false
+                        edge = 0
+                        targetOrientation = 0f
+                        animatedOrientation = 0f
                         updateView()
                     }
                     return true
@@ -251,18 +260,19 @@ class PetOverlayService : Service() {
                     params.y = bottom
                     falling = false
                     velocityY = 0f
+                    edge = 0
+                    targetOrientation = 0f
+                    animatedOrientation = 0f
                 }
             } else {
                 moveAroundScreen(bottom)
             }
 
             phase += if (falling) 0.12f else 0.24f
-            val rotation = when (edge) {
-                1 -> 90f
-                3 -> -90f
-                else -> 0f
-            }
-            view.setMotion(phase, direction, falling, rotation)
+            val turnRemaining = targetOrientation - animatedOrientation
+            animatedOrientation += turnRemaining * 0.22f
+            if (abs(turnRemaining) < 0.55f) animatedOrientation = targetOrientation
+            view.setMotion(phase, direction, falling, animatedOrientation)
             updateView()
         }
 
@@ -279,6 +289,7 @@ class PetOverlayService : Service() {
                     if (params.x >= right) {
                         params.x = right
                         edge = 1
+                        targetOrientation -= 90f
                     }
                 }
                 1 -> {
@@ -288,24 +299,27 @@ class PetOverlayService : Service() {
                     if (params.y <= top) {
                         params.y = top
                         edge = 2
+                        targetOrientation -= 90f
                     }
                 }
                 2 -> {
-                    direction = -1f
+                    direction = 1f
                     params.y = top
                     params.x -= step
                     if (params.x <= 0) {
                         params.x = 0
                         edge = 3
+                        targetOrientation -= 90f
                     }
                 }
                 else -> {
-                    direction = -1f
+                    direction = 1f
                     params.x = 0
                     params.y += step
                     if (params.y >= bottom) {
                         params.y = bottom
                         edge = 0
+                        targetOrientation -= 90f
                     }
                 }
             }
