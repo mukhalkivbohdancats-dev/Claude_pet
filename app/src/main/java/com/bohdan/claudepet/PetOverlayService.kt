@@ -204,9 +204,7 @@ class PetOverlayService : Service() {
                     dragging = true
                     falling = false
                     velocityY = 0f
-                    targetOrientation = 0f
-                    animatedOrientation = 0f
-                    edge = 0
+                    // Preserve the current wall/ceiling position and pose while grabbing.
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     windowStartX = params.x
@@ -223,7 +221,7 @@ class PetOverlayService : Service() {
                     params.y = (windowStartY + dy.roundToInt())
                         .coerceIn(0, floorY(params.height))
                     if (abs(dx) > dp(2)) direction = if (dx >= 0) 1f else -1f
-                    view.setMotion(phase, direction, false, 0f)
+                    view.setMotion(phase, direction, false, animatedOrientation)
                     updateView()
                     return true
                 }
@@ -232,17 +230,34 @@ class PetOverlayService : Service() {
                     if (!dragging) return true
                     dragging = false
                     val bottom = floorY(params.height)
-                    if (params.y < bottom - dp(2)) {
-                        falling = true
+                    val right = max(0, screenWidth() - params.width)
+                    val top = dp(24).coerceAtMost(bottom)
+                    val snapDistance = dp(42)
+                    val distances = listOf(
+                        abs(bottom - params.y), // bottom
+                        abs(right - params.x),  // right
+                        abs(params.y - top),    // ceiling
+                        abs(params.x)           // left
+                    )
+                    val nearestEdge = distances.indices.minByOrNull { distances[it] } ?: 0
+                    if (distances[nearestEdge] <= snapDistance) {
+                        // Attach to the closest edge without jumping the pet across the screen.
+                        edge = nearestEdge
+                        when (edge) {
+                            0 -> params.y = bottom
+                            1 -> params.x = right
+                            2 -> params.y = top
+                            3 -> params.x = 0
+                        }
+                        targetOrientation = -90f * edge
+                        falling = false
                         velocityY = 0f
                     } else {
-                        params.y = bottom
-                        falling = false
-                        edge = 0
-                        targetOrientation = 0f
-                        animatedOrientation = 0f
-                        updateView()
+                        // Dropping in the middle makes the pet fall naturally to the bottom.
+                        falling = true
+                        velocityY = 0f
                     }
+                    updateView()
                     return true
                 }
             }
